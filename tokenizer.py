@@ -218,7 +218,8 @@ class FontTokenizer:
             special_token_ids = [self.token_dict[t] for t in self.special_tokens]
         else:
             special_token_ids = []
-        result = [[self.token_dict["%05d"%t_id] for t_id in row if t_id not in special_token_ids] for row in tokens.tolist()]
+        # 21146 ~ <eos_token_id>
+        result = [[self.token_dict["%05d"%t_id] for t_id in row[:row.index(21146)] if t_id not in special_token_ids] for row in tokens.tolist()]
 
         return result
     
