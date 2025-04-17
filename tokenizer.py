@@ -141,7 +141,8 @@ class FontTokenizer:
         out = {"input_ids": input_ids, "mask":mask, "length": len(input_ids)}
         return SimpleNamespace(**out)
     
-    def encode(self, ann_line:str, output_type:int, max_length:int=77, return_tensors="pt")->TokenEmbeddings:
+    def encode(self, ann_line:str, output_type:int, max_length:int=77, return_tensors="pt",
+               c_location="first")->TokenEmbeddings:
         """ Read annotation_file format dataset
         add <bos_token_id> and <eos_token_id> to input_ids at first and last location
         Args:
@@ -152,6 +153,7 @@ class FontTokenizer:
             output_type : 0 for csv_encode, 1 for embedding
             max_length : max length of input_ids
             return_tensors : return type, "pt" or "np"
+            c_location : context location, "first"(丕<$U不()$D一()>) or "last" (<$U不()$D一()>丕), the last is better in CausualLM architecture
         Return :
             input_ids : list  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] or tensors shape(1, 10)       
             mask : list  [True, True, True, True, True, True, True, True, True, True] or tensors
@@ -168,6 +170,10 @@ class FontTokenizer:
                 input_str = [ann_line[0], "(",")" ]
             else:
                 input_str = [ann_line[0]]       # [亭()]
+
+            if c_location == "last":
+                input_str = input_str[1:] + input_str[0] if len(input_str) > 1 else input_str
+
         else:
             # get splitable content
             stroke_info = get_p1p2(ann_line)
@@ -187,6 +193,9 @@ class FontTokenizer:
                                 stroke_info[4], stroke_info[5], "(", ")",  ">"]
             else:
                 input_str = input_str
+
+            if c_location == "last" and output_type in [2, 3]:
+                input_str = input_str[1:] + input_str[0] if len(input_str) > 1 else input_str
 
         # Add <bos_token_id> at first and <eos_token_id> at last
         input_str = ["<bos_token_id>"] + input_str + ["<eos_token_id>"]
@@ -227,11 +236,24 @@ class FontTokenizer:
     def decode(self, tokens:Union[dict, torch.tensor], rm_pad=True):
         pass
 
-    def __call__(self, texts:Union[str, List[str]], context_length:Optional[int]=77)->TokenEmbeddings:
+    def __call__(self, texts:Union[str, List[str]], context_length:Optional[int]=77,
+                 c_location="first")->TokenEmbeddings:
+        """
+        :params c_location : context location, "first"(丕<$U不()$D一()>) or "last" (<$U不()$D一()>丕), the last is better in CausualLM architecture
+        """
 
         if isinstance(texts, str):
             texts = [texts]
-        
+
+        if c_location == "last":
+            re_location_texts = []
+            for txt in texts:
+                assert "<" != txt[0], "param[c_location=last] not support <only-part> mode input"
+                new_txt = txt[2:] + txt[1] + txt[0] 
+                re_location_texts.append(new_txt)
+
+            texts = re_location_texts
+
         assert context_length, "Please set a valid context length in class"
 
         out_ids, out_mask = [], []
@@ -254,3 +276,4 @@ if __name__ == "__main__":
     pass
     # tokenizer = FontTokenizer("token_dict.json")
     # tokenizer.encode("丞<$U氶(egesl)$D一(j)>", output_type=2)
+    # tokenizer.encode("丞<$U氶(egesl)$D一(j)>", output_type=2, c_location="last")
