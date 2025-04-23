@@ -172,7 +172,7 @@ class FontTokenizer:
                 input_str = [ann_line[0]]       # [亭()]
 
             if c_location == "last":
-                input_str = input_str[1:] + input_str[0] if len(input_str) > 1 else input_str
+                input_str = input_str[1:] + input_str[0:1] if len(input_str) > 1 else input_str
 
         else:
             # get splitable content
@@ -195,7 +195,7 @@ class FontTokenizer:
                 input_str = input_str
 
             if c_location == "last" and output_type in [2, 3]:
-                input_str = input_str[1:] + input_str[0] if len(input_str) > 1 else input_str
+                input_str = input_str[1:] + input_str[0:1] if len(input_str) > 1 else input_str
 
         # Add <bos_token_id> at first and <eos_token_id> at last
         input_str = ["<bos_token_id>"] + input_str + ["<eos_token_id>"]
