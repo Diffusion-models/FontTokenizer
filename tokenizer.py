@@ -60,7 +60,8 @@ def get_p1p2(ann_line, specifical_part:list=[]):
 #============================================================
 class FontTokenizer:
     """only support json file input"""
-    def __init__(self, token_dict:str, context_length:int=77):
+    def __init__(self, token_dict:str, context_length:int=77,
+                add_bos_eos=False, c_location="first"):
         assert token_dict.endswith(".json"), "token_dict must be json file"
         with open(token_dict, "r", encoding="utf-8") as f:
             json_data = json.load(f)
@@ -77,6 +78,10 @@ class FontTokenizer:
         print("max annotation length:", context_length)
         print("=="*20)
 
+        # add option for support old tokenizer
+        self.add_bos_eos = add_bos_eos
+        self.c_location = c_location
+                    
     def save_pretrained(self, dest):
         pass
 
@@ -98,11 +103,18 @@ class FontTokenizer:
         if ann_line[0] == "|":
             ann_line_new = ann_line[1:]
             input_str = ["|"] + [s for s in ann_line_new.split("|") if s!=""]
+        elif ann_line[-1] == "|" and self.c_location =="last":
+            ann_line_new = ann_line[:-1]
+            input_str = [s for s in ann_line_new.split("|") if s!=""] + ["|"]
         else:
             input_str = ann_line.split("|")
 
-        # Add <bos_token_id> at first and <eos_token_id> at last
-        input_str = ["<bos_token_id>"] + input_str + ["<eos_token_id>"]
+        if not isinstance(input_str, list):
+            input_str = [input_str]
+
+        if self.add_bos_eos:
+            # Add <bos_token_id> at first and <eos_token_id> at last
+            input_str = ["<bos_token_id>"] + input_str + ["<eos_token_id>"]
 
         num_in = len(input_str)
         assert num_in <= max_length, f"input_str:{num_in} > max_length:{max_length}"
@@ -141,8 +153,7 @@ class FontTokenizer:
         out = {"input_ids": input_ids, "mask":mask, "length": len(input_ids)}
         return SimpleNamespace(**out)
     
-    def encode(self, ann_line:str, output_type:int, max_length:int=77, return_tensors="pt",
-               c_location="first")->TokenEmbeddings:
+    def encode(self, ann_line:str, output_type:int, max_length:int=77, return_tensors="pt")->TokenEmbeddings:
         """ Read annotation_file format dataset
         add <bos_token_id> and <eos_token_id> to input_ids at first and last location
         Args:
@@ -171,7 +182,7 @@ class FontTokenizer:
             else:
                 input_str = [ann_line[0]]       # [亭()]
 
-            if c_location == "last":
+            if self.c_location == "last":
                 input_str = input_str[1:] + input_str[0:1] if len(input_str) > 1 else input_str
 
         else:
@@ -194,11 +205,12 @@ class FontTokenizer:
             else:
                 input_str = input_str
 
-            if c_location == "last" and output_type in [2, 3]:
+            if self.c_location == "last" and output_type in [2, 3]:
                 input_str = input_str[1:] + input_str[0:1] if len(input_str) > 1 else input_str
 
-        # Add <bos_token_id> at first and <eos_token_id> at last
-        input_str = ["<bos_token_id>"] + input_str + ["<eos_token_id>"]
+        if self.add_bos_eos:
+            # Add <bos_token_id> at first and <eos_token_id> at last
+            input_str = ["<bos_token_id>"] + input_str + ["<eos_token_id>"]
 
         num_in = len(input_str)
         assert num_in <= max_length, f"input_str len:{num_in} > max_length:{self.max_length}"
@@ -236,8 +248,7 @@ class FontTokenizer:
     def decode(self, tokens:Union[dict, torch.tensor], rm_pad=True):
         pass
 
-    def __call__(self, texts:Union[str, List[str]], context_length:Optional[int]=77,
-                 c_location="first")->TokenEmbeddings:
+    def __call__(self, texts:Union[str, List[str]], context_length:Optional[int]=77)->TokenEmbeddings:
         """
         :params c_location : context location, "first"(丕<$U不()$D一()>) or "last" (<$U不()$D一()>丕), the last is better in CausualLM architecture
         """
@@ -245,13 +256,14 @@ class FontTokenizer:
         if isinstance(texts, str):
             texts = [texts]
 
-        if c_location == "last":
+        if self.c_location == "last":
             re_location_texts = []
             for txt in texts:
-                assert "<" != txt[0], "param[c_location=last] not support <only-part> mode input"
-                new_txt = txt[2:] + txt[1] + txt[0] 
+                if len(txt) > 3:
+                    new_txt = txt[2:] + txt[1] + txt[0] 
+                else:
+                    new_txt = txt
                 re_location_texts.append(new_txt)
-
             texts = re_location_texts
 
         assert context_length, "Please set a valid context length in class"
@@ -274,6 +286,13 @@ class FontTokenizer:
         
 if __name__ == "__main__":
     pass
-    # tokenizer = FontTokenizer("token_dict.json")
+    # tokenizer = FontTokenizer("data/font_vocab_1712.json")
     # tokenizer.encode("丞<$U氶(egesl)$D一(j)>", output_type=2)
-    # tokenizer.encode("丞<$U氶(egesl)$D一(j)>", output_type=2, c_location="last")
+
+    # tokenizer = FontTokenizer("data/font_vocab_1712.json", add_bos_eos=True ,c_location="last")
+    # tokenizer.encode("丞<$U氶(egesl)$D一(j)>", output_type=2)
+    # tokenizer("灾|<|##$U|宀|(|#k|#d|#e|)|##$D|火|(|#d|#s|#s|#l|)|>")
+
+    tokenizer = FontTokenizer("data/font_vocab_1712.json", add_bos_eos=True ,c_location="last")
+    captions = ["|", "||(|)", "||(|)"]
+    tokenizer(captions[1])
